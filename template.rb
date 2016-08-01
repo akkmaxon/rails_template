@@ -10,7 +10,7 @@ gsub_file 'Gemfile', /group(.)*$/m, ''
 gsub_file 'Gemfile', /gem 'sqlite3'(.)*/, ''
 gem 'pg' # DB
 gem 'devise' # Devise
-gem 'bootstrap', '~> 4.0.0.alpha3.1' # Assets
+gem 'bootstrap-sass', '~> 3.3'
 add_source 'https://rails-assets.org' do
   gem 'rails-assets-tether', '>= 1.1.0'
 end
@@ -71,12 +71,12 @@ production:
 
   inject_into_file 'app/assets/stylesheets/application.scss',
     after: '*/' do 
-    "\n\n@import 'bootstrap';"
+    "\n\n@import 'bootstrap-sprockets';\n@import 'bootstrap';"
   end
 
   inject_into_file 'app/assets/javascripts/application.js',
     before: '//= require_tree .' do
-    "//= require tether\n//= require bootstrap\n"
+    "//= require bootstrap\n"
   end
 
   # Test and development environment
@@ -158,12 +158,12 @@ Capybara.default_driver = :poltergeist
     after: "<body>\n" do
     <<-EOF
     <div id="messages">
-      <% flash.each do |key, value| %>
-        <div class="alert alert-<%= key %>">
+      <% flash.each do |name, message| %>
+        <div class="alert alert-<%= name %>">
 	  <button class="close" data-dismiss="alert" aria-label="close">
 	    &times;
 	  </button>
-	  <%= value %>
+	  <%= message %>
 	</div>
       <% end %>
     </div>
