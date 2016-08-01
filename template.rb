@@ -11,9 +11,6 @@ gsub_file 'Gemfile', /gem 'sqlite3'(.)*/, ''
 gem 'pg' # DB
 gem 'devise' # Devise
 gem 'bootstrap-sass', '~> 3.3'
-add_source 'https://rails-assets.org' do
-  gem 'rails-assets-tether', '>= 1.1.0'
-end
 
 gem_group :development, :test do
   gem 'byebug'
@@ -148,47 +145,87 @@ Capybara.default_driver = :poltergeist
 
   # Devise
   generate 'devise:install'
-  environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
-    env: 'development'
-  inject_into_file 'app/controllers/application_controller.rb',
-    after: 'class ApplicationController < ActionController::Base' do
-    "\n  before_action :authenticate_user!"
-  end
-  inject_into_file 'app/views/layouts/application.html.erb',
-    after: "<body>\n" do
-    <<-EOF
-    <div id="messages">
-      <% flash.each do |name, message| %>
-        <div class="alert alert-<%= name %>">
-	  <button class="close" data-dismiss="alert" aria-label="close">
-	    &times;
-	  </button>
-	  <%= message %>
-	</div>
-      <% end %>
-    </div>
-    EOF
-  end
-  inject_into_file 'app/assets/stylesheets/application.scss',
-    after: "@import 'bootstrap';\n" do
-    <<-EOF
-
-#messages {
-  padding: 30px;
-  .alert {
-    margin: -15px;
-    padding: 0;
-  }
-}
-    EOF
-  end
-  model_name = ask 'What would you like the user model to be called?[user]'
+  model_name = ask 'What would you like the user model to be called?'
   model_name = 'user' if model_name.blank?
   generate "devise #{model_name}"
   generate 'devise:views'
 
+  environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
+    env: 'development'
+  inject_into_file 'app/controllers/application_controller.rb',
+    after: 'class ApplicationController < ActionController::Base' do
+    "\n  before_action :authenticate_#{model_name}!"
+  end
   messages << 'Check migrations'
   messages << 'Run rails db:migrate'
+
+  # Layouts
+  inject_into_file 'app/views/layouts/application.html.erb',
+    after: "</title>\n" do
+    <<-EOF
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    EOF
+  end
+  inject_into_file 'app/views/layouts/application.html.erb',
+    after: "<body>\n" do
+    <<-EOF
+    <%= render "layouts/header" %>
+    <%= render "layouts/messages" %>
+    EOF
+  end
+  create_file 'app/views/layouts/_header.html.erb',
+    <<-EOF
+<header class="navbar navbar-default">
+  <nav class="container-fluid">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-collapsed" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+	<span class="icon-bar"></span>
+	<span class="icon-bar"></span>
+	<span class="icon-bar"></span>
+      </button>
+      <%= link_to "#{application_name.capitalize}", root_path, class: "navbar-brand" %>
+    </div>
+    <div class="collapse navbar-collapse" id="navbar-collapsed">
+      <ul class="nav navbar-nav">
+        <li class="active">
+	  <a href="#">Link</a>
+	</li>
+	<li class="dropdown">
+	  <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+	    Dropdown <span class="caret"></span>
+	  </a>
+	  <ul class="dropdown-menu">
+	    <li><a href="#">One</a></li>
+	    <li><a href="#">Two</a></li>
+	    <li><a href="#">Three</a></li>
+	  </ul>
+	</li>
+	<form class="navbar-form navbar-left">
+	  <div class="form-group">
+	    <input type="text" class="form-control" placeholder="Search">
+	  </div>
+	  <button type="submit" class="btn btn-default">Find</button>
+	</form>
+	<p class="navbar-text navbar-right">Signed in as User</p>
+      </ul>
+    </div>
+  </nav>
+</header>
+    EOF
+  create_file 'app/views/layouts/_messages.html.erb',
+    <<-EOF
+<div id="messages">
+  <% flash.each do |name, message| %>
+    <div class="alert alert-<%= name %>">
+      <button class="close" data-dismiss="alert" aria-label="close">
+	&times;
+      </button>
+      <%= message %>
+    </div>
+  <% end %>
+</div>
+    EOF
 
   # Finish
   git :init
