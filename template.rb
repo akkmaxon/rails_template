@@ -1,3 +1,5 @@
+messages = []
+
 # Gemfile
 inject_into_file 'Gemfile',
   after: "source 'https://rubygems.org'\n" do
@@ -5,10 +7,13 @@ inject_into_file 'Gemfile',
 end
 
 gsub_file 'Gemfile', /group(.)*$/m, ''
-
-gem 'pg'
-gem 'devise'
-gem 'bootstrap-sass'
+gsub_file 'Gemfile', /gem 'sqlite3'(.)*/, ''
+gem 'pg' # DB
+gem 'devise' # Devise
+gem 'bootstrap', '~> 4.0.0.alpha3.1' # Assets
+add_source 'https://rails-assets.org' do
+  gem 'rails-assets-tether', '>= 1.1.0'
+end
 
 gem_group :development, :test do
   gem 'byebug'
@@ -29,18 +34,58 @@ gem_group :test do
   gem 'database_cleaner'
   gem 'poltergeist'
 end
+messages << "Check the Gemfile"
 
-gem 'rails_12factor', group: 'production'
+after_bundle do
+  # DB
+  application_name = ARGV[1]
+  gsub_file 'config/database.yml', /^(.)*$/m,
+    <<-EOF
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  username: #{application_name}
+  password:
 
-run 'bundle install'
+development:
+  <<: *default
+  database: #{application_name}_development
 
-# RSpec
-run 'rm -rf test/'
+test:
+  <<: *default
+  database: #{application_name}_test
 
-generate 'rspec:install'
+production:
+  <<: *default
+  database: #{application_name}_production
+  username: #{application_name}
+  password: <%= ENV['#{application_name.upcase}_DATABASE_PASSWORD'] %>
+  EOF
 
-gsub_file 'spec/spec_helper.rb', /^(.)*$/m,
-  <<-EOF
+  messages << "Create new role: sudo -i -u postgres createuser -d -w #{application_name}"
+  messages << "Create databases: rails db:create:all"
+
+  # Assets
+  run 'mv app/assets/stylesheets/application.css app/assets/stylesheets/application.scss'
+
+  inject_into_file 'app/assets/stylesheets/application.scss',
+    after: '*/' do 
+    "\n\n@import 'bootstrap';"
+  end
+
+  inject_into_file 'app/assets/javascripts/application.js',
+    before: '//= require_tree .' do
+    "//= require tether\n//= require bootstrap\n"
+  end
+
+  # Test and development environment
+  run 'rm -rf test/'
+
+  generate 'rspec:install'
+
+  gsub_file 'spec/spec_helper.rb', /^(.)*$/m,
+    <<-EOF
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
@@ -57,23 +102,24 @@ RSpec.configure do |config|
 
   config.order = :random
 end
-EOF
+    EOF
 
-inject_into_file 'spec/rails_helper.rb',
-  after: "require 'rspec/rails'\n" do <<-EOF
+  inject_into_file 'spec/rails_helper.rb',
+    after: "require 'rspec/rails'\n" do
+    <<-EOF
 require 'capybara/poltergeist'
 
 Capybara.default_driver = :poltergeist
-EOF
-end
+    EOF
+  end
 
-gsub_file 'spec/rails_helper.rb',
-  'config.use_transactional_fixtures = true',
-  'config.use_transactional_fixtures = false'
+  gsub_file 'spec/rails_helper.rb',
+    'config.use_transactional_fixtures = true',
+    'config.use_transactional_fixtures = false'
 
-inject_into_file 'spec/rails_helper.rb',
-  before: "\nend\n" do
-  <<-EOF
+  inject_into_file 'spec/rails_helper.rb',
+    before: "\nend\n" do
+    <<-EOF
 
   config.before(:suite) do
     DatabaseCleaner.clean_with(:truncation)
@@ -97,47 +143,60 @@ inject_into_file 'spec/rails_helper.rb',
 
   config.include Warden::Test::Helpers, type: :feature
   config.after(type: :feature) { Warden.test_reset! }
-EOF
-end
-=begin
-# DB -- replace application_name
-gsub_file 'config/database.yml', /^(.)*$/m,
-  <<-EOF
-default: &default
-  adapter: postgresql
-  encoding: unicode
-  pool: 5
-  username: #{application_name}
-  password: #{application_name}
+    EOF
+  end
 
-development:
-  <<: *default
-  database: #{application_name}_development
+  # Devise
+  generate 'devise:install'
+  environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
+    env: 'development'
+  inject_into_file 'app/controllers/application_controller.rb',
+    after: 'class ApplicationController < ActionController::Base' do
+    "\n  before_action :authenticate_user!"
+  end
+  inject_into_file 'app/views/layouts/application.html.erb',
+    after: "<body>\n" do
+    <<-EOF
+    <div id="messages">
+      <% flash.each do |key, value| %>
+        <div class="alert alert-<%= key %>">
+	  <button class="close" data-dismiss="alert" aria-label="close">
+	    &times;
+	  </button>
+	  <%= value %>
+	</div>
+      <% end %>
+    </div>
+    EOF
+  end
+  inject_into_file 'app/assets/stylesheets/application.scss',
+    after: "@import 'bootstrap';\n" do
+    <<-EOF
 
-test:
-  <<: *default
-  database: #{application_name}_test
+#messages {
+  padding: 30px;
+  .alert {
+    margin: -15px;
+    padding: 0;
+  }
+}
+    EOF
+  end
+  model_name = ask 'What would you like the user model to be called?[user]'
+  model_name = 'user' if model_name.blank?
+  generate "devise #{model_name}"
+  generate 'devise:views'
 
-production:
-  <<: *default
-  database: #{application_name}_production
-  username: #{application_name}
-  password: <%= ENV['#{application_name.upcase}_DATABASE_PASSWORD'] %>
-EOF
-=end
+  messages << 'Check migrations'
+  messages << 'Run rails db:migrate'
 
-# Assets
-run 'mv app/assets/stylesheets/application.css app/assets/stylesheets/application.scss'
+  # Finish
+  git :init
+  git add: '.'
+  git commit: "-m 'First commit'"
 
-inject_into_file 'app/assets/stylesheets/application.scss',
-  after: '*/' do <<-EOF
-
-@import 'bootstrap-sprockets';
-@import 'bootstrap';
-EOF
-end
-
-inject_into_file 'app/assets/javascripts/application.js',
-  before: '//= require_tree .' do
-  "//= require bootstrap\n"
+  puts "==========YOUR NEXT STEPS: ============"
+  messages.each do |message|
+    puts message
+  end
 end
