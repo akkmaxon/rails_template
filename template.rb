@@ -221,14 +221,14 @@ document.addEventListener "turbolinks:load", () ->
 	    <li><a href="#">Three</a></li>
 	  </ul>
 	</li>
-	<form class="navbar-form navbar-left">
-	  <div class="form-group">
-	    <input type="text" class="form-control" placeholder="Search">
-	  </div>
-	  <button type="submit" class="btn btn-default">Find</button>
-	</form>
-	<p class="navbar-text navbar-right">Signed in as User</p>
       </ul>
+      <form class="navbar-form navbar-left">
+	<div class="form-group">
+	  <input type="text" class="form-control" placeholder="Search">
+	</div>
+	<button type="submit" class="btn btn-default">Find</button>
+      </form>
+      <p class="navbar-text navbar-right">Signed in as User</p>
     </div>
   </nav>
 </header>
