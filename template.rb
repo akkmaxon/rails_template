@@ -143,38 +143,58 @@ Capybara.default_driver = :poltergeist
     EOF
   end
 
-  # Devise
-  generate 'devise:install'
-  model_name = ask 'What would you like the user model to be called?'
-  model_name = 'user' if model_name.blank?
-  generate "devise #{model_name}"
-  generate 'devise:views'
-
-  environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
-    env: 'development'
-  inject_into_file 'app/controllers/application_controller.rb',
-    after: 'class ApplicationController < ActionController::Base' do
-    "\n  before_action :authenticate_#{model_name}!"
-  end
-  messages << 'Check migrations'
-  messages << 'Run rails db:migrate'
-
   # Layouts
   inject_into_file 'app/views/layouts/application.html.erb',
     after: "</title>\n" do
-    <<-EOF
+    <<-HTML
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    EOF
+    HTML
   end
+
   inject_into_file 'app/views/layouts/application.html.erb',
     after: "<body>\n" do
-    <<-EOF
+    <<-HTML
+    <%= render "layouts/web_console" %>
     <%= render "layouts/header" %>
     <%= render "layouts/messages" %>
-    EOF
+    HTML
   end
-  create_file 'app/views/layouts/_header.html.erb',
-    <<-EOF
+
+  ## Web console
+  file 'app/views/layouts/_web_console.html.erb', <<-HTML
+<% if Rails.env.development? %>
+  <button id="console-toggle" class="btn btn-link btn-lg">
+    <span class="glyphicon glyphicon-console"></span>
+  </button>
+  <% console %>
+<% end %>
+  HTML
+  inject_into_file 'app/assets/stylesheets/application.scss',
+    after: "@import 'bootstrap';\n" do
+    <<-CSS
+#console-toggle {
+  position: absolute;
+  top: 100px;
+  left: -47px;
+  width: 50px;
+  border-right: 3px solid #333;
+  transition: left 0.5s ease-in-out;
+  &:hover {
+    left: 0;
+  }
+}
+    CSS
+  end
+  file 'app/assets/javascripts/web_console.coffee', <<-COFFEE
+document.addEventListener "turbolinks:load", () ->
+  $('#console').hide()
+
+  $('#console-toggle').click () ->
+    $('#console').toggle()
+  COFFEE
+
+  ## Header
+  file 'app/views/layouts/_header.html.erb', <<-HTML
 <header class="navbar navbar-default">
   <nav class="container-fluid">
     <div class="navbar-header">
@@ -212,11 +232,13 @@ Capybara.default_driver = :poltergeist
     </div>
   </nav>
 </header>
-    EOF
-  create_file 'app/views/layouts/_messages.html.erb',
-    <<-EOF
+  HTML
+
+  ## Flash
+  file 'app/views/layouts/_messages.html.erb', <<-HTML
 <div id="messages">
   <% flash.each do |name, message| %>
+    <% name = 'danger' if name == 'alert' %>
     <div class="alert alert-<%= name %>">
       <button class="close" data-dismiss="alert" aria-label="close">
 	&times;
@@ -225,9 +247,44 @@ Capybara.default_driver = :poltergeist
     </div>
   <% end %>
 </div>
-    EOF
+  HTML
+
+  if yes?('Is it ok if the user model will be called `user`?')
+    model_name = 'user'
+  else
+    model_name = ask 'What would you like the user model to be called?'
+  end
+  model_name = 'user' if model_name.blank?
+
+  # Welcome page
+  generate 'controller welcome index'
+
+  route "root to: 'welcome#index'"
+
+  inject_into_file 'app/controllers/welcome_controller.rb',
+    after: 'class WelcomeController < ApplicationController' do
+    "\n  skip_before_action :authenticate_#{model_name}!\n"
+  end
+
+  # Devise
+  generate 'devise:install'
+  generate "devise #{model_name}"
+  generate 'devise:views'
+
+  environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
+    env: 'development'
+  inject_into_file 'app/controllers/application_controller.rb',
+    after: 'class ApplicationController < ActionController::Base' do
+    "\n  before_action :authenticate_#{model_name}!"
+  end
+  messages << 'Check migrations'
+  messages << 'Run rails db:migrate'
 
   # Finish
+  inject_into_file '.gitignore',
+    after: '/.bundle' do
+    "\n\n*.swp"
+  end
   git :init
   git add: '.'
   git commit: "-m 'First commit'"
